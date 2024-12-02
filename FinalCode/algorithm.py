@@ -37,7 +37,7 @@ class Algorithm:
         # Get only the forecast weeks
         forecast_data = forecasted_info[forecasted_info["Week"].isin(self.forecast_weeks)]
         # Calculate prices
-        prices = forecasted_info.drop_duplicates(subset="Pcode", keep="first").set_index("Pcode")["Price"].map(lambda x: float(x[1:]))
+        prices = forecasted_info.drop_duplicates(subset="Pcode", keep="first").set_index("Pcode")["Price"]
         self.prices = prices.ravel()
         # Calculate quantities (null values are 0 if exist)
         quantities_df = forecast_data.pivot(index="Pcode", columns="Week", values="Quantity Sold")
@@ -60,7 +60,7 @@ class Algorithm:
             p_crossover = trial.suggest_float('p_crossover', 0.1, 0.9)
                 
             # Call your differential evolution function with the suggested hyperparameters
-            _, score = self.differential_evolution(
+            _, score, _ = self.differential_evolution(
                     objective_function=self.f,
                     parameter_bounds=self.parameter_bounds,
                     population_size=int(population_size),
@@ -86,13 +86,14 @@ class Algorithm:
 
         # Extract best hyperparameters
         best_hyperparameters = study.best_params
+
         # Based on hyperparameter search
         population_size = best_hyperparameters["population_size"]
         mutation_factor = best_hyperparameters["mutation_factor"]
         p_crossover = best_hyperparameters["p_crossover"]
 
         # Calculate the best parameters and score
-        best_parameters, score = self.differential_evolution(
+        best_parameters, score, scores = self.differential_evolution(
             self.f, 
             self.parameter_bounds, 
             population_size, 
@@ -108,7 +109,7 @@ class Algorithm:
             reorder_cost_importance
         )
         
-        return best_parameters, score
+        return best_parameters, score, scores
 
     def initialize_population(self, bounds, population_size):
         bounds = np.array(bounds, dtype=np.float64)  # Convert bounds to a NumPy array
@@ -131,6 +132,7 @@ class Algorithm:
         bounds_array = np.array(parameter_bounds)
         lower_bounds, upper_bounds = bounds_array[:, 0], bounds_array[:, 1]
 
+        scores = []
         for _ in range(n_generations):
             # Mutation and crossover in a vectorized manner
             indices = np.arange(population_size)
@@ -164,9 +166,12 @@ class Algorithm:
                 if trial_fitness[i] < fitness[i]:
                     population[i] = trial_population[i]
                     fitness[i] = trial_fitness[i]
+            
+            best_score = np.argmin(fitness)
+            scores.append(fitness[best_score])
 
         best_index = np.argmin(fitness)  # Minimize the objective
-        return population[best_index], fitness[best_index]
+        return population[best_index], fitness[best_index], scores
 
     def f(self, individual, quantities, prices, policy_optimization_period, num_skus, a, b, c):
         # Extract reorder quantities and frequencies from the individual
